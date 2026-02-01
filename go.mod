@@ -1,4 +1,4 @@
-module github.com/alvgonz/hvac-saas-api
+module github.com/Alvgonz/hvac-saas-api
 
 go 1.25.0
 
