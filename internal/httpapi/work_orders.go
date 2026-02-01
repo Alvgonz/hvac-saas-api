@@ -344,4 +344,3 @@ func (h *WorkOrdersHandler) Complete(w http.ResponseWriter, r *http.Request) {
 
 	WriteJSON(w, http.StatusOK, map[string]string{"id": id, "status": "completed"})
 }
-

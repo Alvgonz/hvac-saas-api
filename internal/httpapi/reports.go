@@ -145,7 +145,6 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 	pdf.AddUTF8Font("Body", "", "internal/assets/fonts/AndaleMono.ttf")
 	pdf.AddUTF8Font("Body", "B", "internal/assets/fonts/AndaleMono.ttf")
 
-
 	pdf.AddPage()
 
 	pdf.SetFont("Body", "B", 16)
@@ -163,7 +162,6 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 	pdf.SetFont("Body", "B", 11)
 	pdf.Cell(0, 7, fmt.Sprintf("Completed Work Orders: %d", len(items)))
 	pdf.Ln(10)
-
 
 	// Tabla
 	pdf.SetFont("Body", "B", 9)
@@ -246,7 +244,6 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
 	_ = pdf.Output(w)
 }
-
 
 func truncate(s string, max int) string {
 	s = strings.TrimSpace(s)
