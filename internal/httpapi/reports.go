@@ -27,7 +27,8 @@ type reportRow struct {
 }
 
 func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	// Acepta GET y HEAD
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -49,14 +50,10 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid month format, expected YYYY-MM", http.StatusBadRequest)
 		return
 	}
-	// Ventana [start, end)
 	start := monthStart
 	end := monthStart.AddDate(0, 1, 0)
 
-	// customer_id:
-	// - client: solo el suyo (del token)
-	// - admin/dispatcher: puede mandar customer_id por query
-	// - technician: por ahora no (lo puedes habilitar luego si quieres)
+	// customer_id según rol
 	var customerID string
 	if claims.Role == "client" {
 		if claims.CustomerID == nil {
@@ -78,7 +75,7 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
 	defer cancel()
 
-	// Trae encabezados (provider y customer)
+	// Encabezados
 	var providerName, customerName string
 	err = h.DB.QueryRow(ctx, `
 		SELECT sp.name, c.name
@@ -88,6 +85,17 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 	`, claims.ServiceProvider, customerID).Scan(&providerName, &customerName)
 	if err != nil {
 		http.Error(w, "provider/customer not found", http.StatusNotFound)
+		return
+	}
+
+	// Prepara headers una sola vez
+	filename := fmt.Sprintf("maintenance_%s_%s.pdf", sanitizeFilename(customerName), monthStr)
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
+
+	// Si es HEAD, no generes el PDF (solo headers + 200)
+	if r.Method == http.MethodHead {
+		w.WriteHeader(http.StatusOK)
 		return
 	}
 
@@ -136,12 +144,15 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 		}
 		items = append(items, it)
 	}
+	if err := rows.Err(); err != nil {
+		http.Error(w, "rows error", http.StatusInternalServerError)
+		return
+	}
 
 	// Generar PDF
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetTitle("Monthly Maintenance Report", false)
 
-	// Fuente UTF-8 (TTF)
 	pdf.AddUTF8Font("Body", "", "internal/assets/fonts/AndaleMono.ttf")
 	pdf.AddUTF8Font("Body", "B", "internal/assets/fonts/AndaleMono.ttf")
 
@@ -165,11 +176,11 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 
 	// Tabla
 	pdf.SetFont("Body", "B", 9)
-	colW := []float64{22, 28, 30, 40, 70} // date, type, priority, asset, title
+	colW := []float64{22, 28, 30, 40, 70}
 	headers := []string{"Date", "Type", "Priority", "Asset", "Title"}
 
-	for i, h := range headers {
-		pdf.CellFormat(colW[i], 7, h, "1", 0, "LM", false, 0, "")
+	for i, htxt := range headers {
+		pdf.CellFormat(colW[i], 7, htxt, "1", 0, "LM", false, 0, "")
 	}
 	pdf.Ln(-1)
 
@@ -190,11 +201,9 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 			assetStr = fmt.Sprintf("%s - %s", it.AssetTag, it.AssetName)
 		}
 
-		// wrap a máximo 2 líneas
 		assetLines := wrap2(pdf, assetStr, colW[3]-2)
 		titleLines := wrap2(pdf, it.Title, colW[4]-2)
 
-		// altura de fila según el que tenga más líneas
 		maxLines := len(assetLines)
 		if len(titleLines) > maxLines {
 			maxLines = len(titleLines)
@@ -206,44 +215,39 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 
 		x := x0
 
-		// Date
 		pdf.Rect(x, y, colW[0], rowH, "")
 		pdf.Text(x+padX, y+padTop+lineH, dateStr)
 		x += colW[0]
 
-		// Type
 		pdf.Rect(x, y, colW[1], rowH, "")
 		pdf.Text(x+padX, y+padTop+lineH, it.Type)
 		x += colW[1]
 
-		// Priority
 		pdf.Rect(x, y, colW[2], rowH, "")
 		pdf.Text(x+padX, y+padTop+lineH, it.Priority)
 		x += colW[2]
 
-		// Asset (wrap)
 		pdf.Rect(x, y, colW[3], rowH, "")
 		for i := 0; i < len(assetLines); i++ {
 			pdf.Text(x+padX, y+padTop+lineH*float64(i+1), assetLines[i])
 		}
 		x += colW[3]
 
-		// Title (wrap)
 		pdf.Rect(x, y, colW[4], rowH, "")
 		for i := 0; i < len(titleLines); i++ {
 			pdf.Text(x+padX, y+padTop+lineH*float64(i+1), titleLines[i])
 		}
 
-		// siguiente fila: vuelve al inicio (x0)
 		pdf.SetXY(x0, y+rowH)
 	}
 
-	// Respuesta HTTP
-	filename := fmt.Sprintf("maintenance_%s_%s.pdf", sanitizeFilename(customerName), monthStr)
-	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filename))
-	_ = pdf.Output(w)
+	// Output
+	if err := pdf.Output(w); err != nil {
+		http.Error(w, "pdf output error", http.StatusInternalServerError)
+		return
+	}
 }
+
 
 func truncate(s string, max int) string {
 	s = strings.TrimSpace(s)
