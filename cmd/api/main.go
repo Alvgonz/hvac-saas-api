@@ -75,7 +75,6 @@ func main() {
 		}
 	})))
 
-
 	// PATCH /work-orders/{id}/complete
 	mux.Handle(
 		"/work-orders/",
