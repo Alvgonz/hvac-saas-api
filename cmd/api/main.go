@@ -84,7 +84,7 @@ func main() {
 	// =========================
 	// Reports (PDF)
 	// =========================
-	reportsHandler := &httpapi.ReportsHandler{DB: database.Pool}
+	reportsHandler = &httpapi.ReportsHandler{DB: database.Pool}
 	mux.Handle(
 		"/reports/monthly",
 		httpapi.AuthMiddleware(secret, http.HandlerFunc(reportsHandler.Monthly)),
