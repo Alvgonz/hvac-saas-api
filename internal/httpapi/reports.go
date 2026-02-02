@@ -149,15 +149,29 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// =========================
 	// Generar PDF
+	// =========================
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	pdf.SetTitle("Monthly Maintenance Report", false)
 
+	// Márgenes + salto de página manual
+	pdf.SetMargins(10, 12, 10)
+	pdf.SetAutoPageBreak(false, 12)
+
+	// Fuente UTF-8
 	pdf.AddUTF8Font("Body", "", "internal/assets/fonts/AndaleMono.ttf")
 	pdf.AddUTF8Font("Body", "B", "internal/assets/fonts/AndaleMono.ttf")
 
+	// Footer + total pages (solo 1 vez)
+	addReportFooter(pdf)
+	pdf.AliasNbPages("")
+
 	pdf.AddPage()
 
+	// =========================
+	// Encabezado del reporte
+	// =========================
 	pdf.SetFont("Body", "B", 16)
 	pdf.Cell(0, 10, "Monthly Maintenance Report")
 	pdf.Ln(8)
@@ -174,26 +188,20 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 	pdf.Cell(0, 7, fmt.Sprintf("Completed Work Orders: %d", len(items)))
 	pdf.Ln(10)
 
+	// =========================
 	// Tabla
-	pdf.SetFont("Body", "B", 9)
-	colW := []float64{22, 28, 30, 40, 70}
-	headers := []string{"Date", "Type", "Priority", "Asset", "Title"}
-
-	for i, htxt := range headers {
-		pdf.CellFormat(colW[i], 7, htxt, "1", 0, "LM", false, 0, "")
-	}
-	pdf.Ln(-1)
+	// =========================
+	colW := []float64{22, 28, 30, 40, 70} // date, type, priority, asset, title
+	addTableHeader(pdf, colW)
 
 	pdf.SetFont("Body", "", 9)
+
 	lineH := 6.0
 	padX := 1.5
 	padTop := 2.0
 	padBottom := 2.0
 
 	for _, it := range items {
-		x0 := pdf.GetX()
-		y := pdf.GetY()
-
 		dateStr := it.CompletedAt.Format("2006-01-02")
 
 		assetStr := it.AssetTag
@@ -211,33 +219,45 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 		if maxLines < 1 {
 			maxLines = 1
 		}
+
 		rowH := padTop + float64(maxLines)*lineH + padBottom
 
+		// ✅ si no cabe, agrega página y vuelve a imprimir header
+		ensureSpace(pdf, rowH, colW)
+
+		x0 := pdf.GetX()
+		y := pdf.GetY()
 		x := x0
 
+		// Date
 		pdf.Rect(x, y, colW[0], rowH, "")
 		pdf.Text(x+padX, y+padTop+lineH, dateStr)
 		x += colW[0]
 
+		// Type
 		pdf.Rect(x, y, colW[1], rowH, "")
 		pdf.Text(x+padX, y+padTop+lineH, it.Type)
 		x += colW[1]
 
+		// Priority
 		pdf.Rect(x, y, colW[2], rowH, "")
 		pdf.Text(x+padX, y+padTop+lineH, it.Priority)
 		x += colW[2]
 
+		// Asset (wrap)
 		pdf.Rect(x, y, colW[3], rowH, "")
 		for i := 0; i < len(assetLines); i++ {
 			pdf.Text(x+padX, y+padTop+lineH*float64(i+1), assetLines[i])
 		}
 		x += colW[3]
 
+		// Title (wrap)
 		pdf.Rect(x, y, colW[4], rowH, "")
 		for i := 0; i < len(titleLines); i++ {
 			pdf.Text(x+padX, y+padTop+lineH*float64(i+1), titleLines[i])
 		}
 
+		// siguiente fila
 		pdf.SetXY(x0, y+rowH)
 	}
 
@@ -247,7 +267,6 @@ func (h *ReportsHandler) Monthly(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 }
-
 
 func truncate(s string, max int) string {
 	s = strings.TrimSpace(s)
@@ -271,13 +290,11 @@ func truncateToWidth(pdf *gofpdf.Fpdf, s string, w float64) string {
 		return s
 	}
 
-	// padding interno para que no pegue al borde
 	maxW := w - 2
 	if maxW <= 0 {
 		return ""
 	}
 
-	// ya cabe
 	if pdf.GetStringWidth(s) <= maxW {
 		return s
 	}
@@ -306,22 +323,16 @@ func wrap2(pdf *gofpdf.Fpdf, s string, w float64) []string {
 	}
 
 	out := make([]string, 0, 2)
-
-	// línea 1
 	out = append(out, string(lines[0]))
 
-	// línea 2 (si existe)
 	if len(lines) > 1 {
 		second := string(lines[1])
-
-		// si había más líneas, truncamos la 2da con "..."
 		if len(lines) > 2 {
 			second = fitWithEllipsis(pdf, second, w)
 		}
 		out = append(out, second)
 	}
 
-	// si solo cabía en 1 línea, listo
 	return out
 }
 
@@ -339,4 +350,33 @@ func fitWithEllipsis(pdf *gofpdf.Fpdf, s string, w float64) string {
 		r = r[:len(r)-1]
 	}
 	return ellipsis
+}
+
+func addReportFooter(pdf *gofpdf.Fpdf) {
+	pdf.SetFooterFunc(func() {
+		pdf.SetY(-12)
+		pdf.SetFont("Body", "", 8)
+		pdf.CellFormat(0, 10, fmt.Sprintf("Page %d/{nb}", pdf.PageNo()), "", 0, "C", false, 0, "")
+	})
+}
+
+func addTableHeader(pdf *gofpdf.Fpdf, colW []float64) {
+	pdf.SetFont("Body", "B", 9)
+	headers := []string{"Date", "Type", "Priority", "Asset", "Title"}
+	for i, h := range headers {
+		pdf.CellFormat(colW[i], 7, h, "1", 0, "LM", false, 0, "")
+	}
+	pdf.Ln(-1)
+	pdf.SetFont("Body", "", 9)
+}
+
+func ensureSpace(pdf *gofpdf.Fpdf, needed float64, colW []float64) {
+	_, pageH := pdf.GetPageSize()
+	_, _, _, bm := pdf.GetMargins()
+
+	// Si la fila no cabe, nueva página + header tabla
+	if pdf.GetY()+needed > pageH-bm {
+		pdf.AddPage()
+		addTableHeader(pdf, colW)
+	}
 }
