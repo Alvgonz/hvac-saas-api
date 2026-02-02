@@ -63,19 +63,18 @@ func main() {
 
 	// GET /work-orders
 	// POST /work-orders
-	mux.Handle("/work-orders", httpapi.AuthMiddleware(
-		secret,
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			switch r.Method {
-			case http.MethodPost:
-				woHandler.Create(w, r)
-			case http.MethodGet:
-				woHandler.List(w, r)
-			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-			}
-		}),
-	))
+
+	reportsHandler := &httpapi.ReportsHandler{DB: database.Pool}
+
+	mux.Handle("/reports/monthly", httpapi.AuthMiddleware(secret, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead:
+			reportsHandler.Monthly(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
 
 	// PATCH /work-orders/{id}/complete
 	mux.Handle(
