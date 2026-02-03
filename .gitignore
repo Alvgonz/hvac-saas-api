@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Environment variables
+.env
+
+# Generated files
+*.pdf
+
+# Go binaries
+app
