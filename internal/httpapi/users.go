@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -28,6 +29,7 @@ type createUserRequest struct {
 type createUserResponse struct {
 	ID         string `json:"id"`
 	InviteSent bool   `json:"invite_sent"`
+	InviteToken *string `json:"invite_token,omitempty"`
 }
 
 func (h *UsersHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -163,8 +165,14 @@ func (h *UsersHandler) Create(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[INVITE] user=%s email=%s role=%s expires=%s %s",
 		userID, req.Email, req.Role, expiresAt.Format(time.RFC3339), link)
 
+	var inviteToken *string
+	if strings.ToLower(os.Getenv("ENV")) != "production" {
+		inviteToken = &plain
+	}
+
 	WriteJSON(w, http.StatusCreated, createUserResponse{
-		ID:         userID,
-		InviteSent: true,
+		ID:          userID,
+		InviteSent:  true,
+		InviteToken: inviteToken,
 	})
 }
