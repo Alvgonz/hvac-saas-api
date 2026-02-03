@@ -43,7 +43,7 @@ func main() {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	// =========================
@@ -56,6 +56,20 @@ func main() {
 	mux.HandleFunc("/auth/login", authHandler.Login)
 	mux.Handle("/me", httpapi.AuthMiddleware(secret, http.HandlerFunc(httpapi.Me)))
 
+	// Set password (public)
+	pwdHandler := &httpapi.PasswordHandler{DB: database.Pool}
+	mux.HandleFunc("/auth/set-password", pwdHandler.SetPassword)
+
+	// =========================
+	// Users
+	// =========================
+	usersHandler := &httpapi.UsersHandler{DB: database.Pool}
+
+	// POST /users  (crear dispatcher/technician/client)
+	mux.Handle("/users", httpapi.AuthMiddleware(secret, http.HandlerFunc(usersHandler.Create)))
+	// opcional: soportar /users/ también
+	mux.Handle("/users/", httpapi.AuthMiddleware(secret, http.HandlerFunc(usersHandler.Create)))
+
 	// =========================
 	// Work Orders
 	// =========================
@@ -63,7 +77,6 @@ func main() {
 
 	// GET /work-orders
 	// POST /work-orders
-	
 	mux.Handle("/work-orders", httpapi.AuthMiddleware(
 		secret,
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -79,26 +92,20 @@ func main() {
 	))
 
 	// PATCH /work-orders/{id}/complete
-	mux.Handle(
-		"/work-orders/",
-		httpapi.AuthMiddleware(secret, http.HandlerFunc(woHandler.Complete)),
-	)
+	mux.Handle("/work-orders/", httpapi.AuthMiddleware(secret, http.HandlerFunc(woHandler.Complete)))
 
 	// =========================
 	// Reports (PDF)
 	// =========================
 	reportsHandler := &httpapi.ReportsHandler{DB: database.Pool}
-	mux.Handle(
-		"/reports/monthly",
-		httpapi.AuthMiddleware(secret, http.HandlerFunc(reportsHandler.Monthly)),
-	)
+	mux.Handle("/reports/monthly", httpapi.AuthMiddleware(secret, http.HandlerFunc(reportsHandler.Monthly)))
 
 	// =========================
 	// Server
 	// =========================
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080" // fallback local
+		port = "8080" // local fallback
 	}
 
 	srv := &http.Server{
@@ -109,14 +116,4 @@ func main() {
 
 	log.Printf("API running on :%s\n", port)
 	log.Fatal(srv.ListenAndServe())
-
-		// Users
-	usersHandler := &httpapi.UsersHandler{DB: database.Pool}
-	mux.Handle("/users", httpapi.AuthMiddleware(secret, http.HandlerFunc(usersHandler.Create)))
-
-	// Set password (public)
-	pwdHandler := &httpapi.PasswordHandler{DB: database.Pool}
-	mux.HandleFunc("/auth/set-password", pwdHandler.SetPassword)
 }
-
-
