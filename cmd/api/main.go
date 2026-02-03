@@ -110,4 +110,13 @@ func main() {
 	log.Printf("API running on :%s\n", port)
 	log.Fatal(srv.ListenAndServe())
 
+		// Users
+	usersHandler := &httpapi.UsersHandler{DB: database.Pool}
+	mux.Handle("/users", httpapi.AuthMiddleware(secret, http.HandlerFunc(usersHandler.Create)))
+
+	// Set password (public)
+	pwdHandler := &httpapi.PasswordHandler{DB: database.Pool}
+	mux.HandleFunc("/auth/set-password", pwdHandler.SetPassword)
 }
+
+
